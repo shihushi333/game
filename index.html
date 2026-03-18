@@ -2,9 +2,9 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>3人称シューティングゲーム</title>
+<title>簡易FPSゲーム</title>
 <style>
-body { margin:0; overflow:hidden; background:#111; color:#fff; font-family:sans-serif; }
+body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:sans-serif; }
 #info { position:absolute; top:10px; left:10px; }
 canvas { display:block; }
 </style>
@@ -20,101 +20,67 @@ canvas.height = window.innerHeight;
 
 let keys = {};
 let bullets = [];
-let enemies = [];
 
 const player = {
-  x: canvas.width/2,
-  y: canvas.height/2,
+  x: 0,
+  y: 0,
   angle: 0,
-  speed: 3
+  speed: 0.1
 };
 
-for(let i=0;i<5;i++){
-  enemies.push({
-    x: Math.random()*canvas.width,
-    y: Math.random()*canvas.height,
-    size: 20
-  });
-}
+const enemy = {
+  x: 5,
+  y: 5,
+  hp: 5
+};
 
 window.addEventListener('keydown', e=>keys[e.key.toLowerCase()] = true);
 window.addEventListener('keyup', e=>keys[e.key.toLowerCase()] = false);
 
 canvas.addEventListener('mousemove', e=>{
-  const dx = e.clientX - player.x;
-  const dy = e.clientY - player.y;
-  player.angle = Math.atan2(dy, dx);
+  player.angle += e.movementX * 0.002;
 });
 
 canvas.addEventListener('click', ()=>{
   bullets.push({
     x: player.x,
     y: player.y,
-    dx: Math.cos(player.angle)*6,
-    dy: Math.sin(player.angle)*6
+    dx: Math.cos(player.angle)*0.5,
+    dy: Math.sin(player.angle)*0.5
   });
 });
 
 function update(){
-  if(keys['w']) player.y -= player.speed;
-  if(keys['s']) player.y += player.speed;
-  if(keys['a']) player.x -= player.speed;
-  if(keys['d']) player.x += player.speed;
+  if(keys['w']){
+    player.x += Math.cos(player.angle)*player.speed;
+    player.y += Math.sin(player.angle)*player.speed;
+  }
+  if(keys['s']){
+    player.x -= Math.cos(player.angle)*player.speed;
+    player.y -= Math.sin(player.angle)*player.speed;
+  }
+  if(keys['a']){
+    player.x += Math.cos(player.angle - Math.PI/2)*player.speed;
+    player.y += Math.sin(player.angle - Math.PI/2)*player.speed;
+  }
+  if(keys['d']){
+    player.x += Math.cos(player.angle + Math.PI/2)*player.speed;
+    player.y += Math.sin(player.angle + Math.PI/2)*player.speed;
+  }
 
-  bullets.forEach(b=>{
+  // 敵がプレイヤーに向かう
+  const dx = player.x - enemy.x;
+  const dy = player.y - enemy.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if(dist > 0.5){
+    enemy.x += dx/dist * 0.02;
+    enemy.y += dy/dist * 0.02;
+  }
+
+  bullets.forEach((b, i)=>{
     b.x += b.dx;
     b.y += b.dy;
-  });
 
-  enemies.forEach((e, ei)=>{
-    bullets.forEach((b, bi)=>{
-      const dx = e.x - b.x;
-      const dy = e.y - b.y;
-      if(Math.sqrt(dx*dx+dy*dy) < e.size){
-        enemies.splice(ei,1);
-        bullets.splice(bi,1);
-      }
-    });
-  });
-}
-
-function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // プレイヤー（3人称っぽく後ろにカメラ）
-  ctx.save();
-  ctx.translate(player.x, player.y);
-  ctx.rotate(player.angle);
-  ctx.fillStyle = 'cyan';
-  ctx.fillRect(-10,-10,20,20);
-  ctx.fillStyle = 'white';
-  ctx.fillRect(0,-3,20,6);
-  ctx.restore();
-
-  // 弾
-  ctx.fillStyle='yellow';
-  bullets.forEach(b=>{
-    ctx.beginPath();
-    ctx.arc(b.x,b.y,4,0,Math.PI*2);
-    ctx.fill();
-  });
-
-  // 敵
-  ctx.fillStyle='red';
-  enemies.forEach(e=>{
-    ctx.beginPath();
-    ctx.arc(e.x,e.y,e.size,0,Math.PI*2);
-    ctx.fill();
-  });
-}
-
-function loop(){
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
-
-loop();
-</script>
-</body>
-</html>
+    const ex = enemy.x - b.x;
+    const ey = enemy.y - b.y;
+    if(Math.sqrt(ex*ex+ey*ey) <
