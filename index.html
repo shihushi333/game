@@ -22,26 +22,19 @@ let renderer=new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth,window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// 地面
 let ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshBasicMaterial({color:0x228B22}));
 ground.rotation.x=-Math.PI/2; scene.add(ground);
 
-// ===== プレイヤー（人型＋銃） =====
+// ===== プレイヤー =====
 let player=new THREE.Object3D(); scene.add(player);
-
 let body=new THREE.Mesh(new THREE.BoxGeometry(1,1.5,0.5),new THREE.MeshBasicMaterial({color:0x0000ff}));
-body.position.y=1;
-player.add(body);
-
+body.position.y=1; player.add(body);
 let head=new THREE.Mesh(new THREE.BoxGeometry(0.6,0.6,0.6),new THREE.MeshBasicMaterial({color:0xffffcc}));
-head.position.y=2;
-player.add(head);
-
+head.position.y=2; player.add(head);
 let gun=new THREE.Mesh(new THREE.BoxGeometry(0.8,0.2,0.2),new THREE.MeshBasicMaterial({color:0x333333}));
-gun.position.set(0.6,1.2,0);
-player.add(gun);
+gun.position.set(0.6,1.2,0); player.add(gun);
 
-// ===== カメラ（右肩視点） =====
+// ===== カメラ =====
 function updateCamera(){
  let offset=new THREE.Vector3(1.5,3,6);
  offset.applyQuaternion(player.quaternion);
@@ -49,25 +42,63 @@ function updateCamera(){
  camera.lookAt(player.position.x, player.position.y+1.5, player.position.z);
 }
 
+// ===== 建築 =====
+let builds=[];
+let buildType='wall';
+let preview;
+
+// 建築プレビュー作成
+function createPreview(){
+ if(preview) scene.remove(preview);
+ let geo;
+ if(buildType==='wall') geo=new THREE.BoxGeometry(2,2,0.3);
+ if(buildType==='floor') geo=new THREE.BoxGeometry(2,0.3,2);
+ if(buildType==='ramp') geo=new THREE.BoxGeometry(2,0.3,2);
+ let mat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.3});
+ preview=new THREE.Mesh(geo,mat);
+ scene.add(preview);
+}
+
+createPreview();
+window.addEventListener('keydown',e=>{
+ if(e.key==='q'){ buildType='wall'; createPreview(); }
+ if(e.key==='e'){ buildType='floor'; createPreview(); }
+ // 建築キー
+ if(e.key==='f'){ buildType='ramp'; createPreview(); }
+ if(e.key.toLowerCase()==='x') editBuild();
+});
+
+function editBuild(){
+ builds.forEach((obj,i)=>{
+  if(obj.position.distanceTo(player.position)<3){
+   scene.remove(obj);
+   builds.splice(i,1);
+  }
+ });
+}
+
+function build(){{
+ let obj;
+ if(buildType==='wall') obj=new THREE.Mesh(new THREE.BoxGeometry(2,2,0.3),new THREE.MeshBasicMaterial({color:0x888888}));
+ if(buildType==='floor') obj=new THREE.Mesh(new THREE.BoxGeometry(2,0.3,2),new THREE.MeshBasicMaterial({color:0x999999}));
+ if(buildType==='ramp'){ obj=new THREE.Mesh(new THREE.BoxGeometry(2,0.3,2),new THREE.MeshBasicMaterial({color:0xaaaaaa})); obj.rotation.x=-Math.PI/4; }
+ let dir=new THREE.Vector3(0,0,-3).applyQuaternion(player.quaternion);
+ obj.position.set(player.position.x+dir.x,1,player.position.z+dir.z);
+ obj.userData.hp=100;
+ scene.add(obj);
+ builds.push(obj);
+}
+
 // ===== 敵 =====
 let enemies=[];
 function spawnEnemy(){
- let e=new THREE.Object3D();
-
- let body=new THREE.Mesh(new THREE.BoxGeometry(1,1.5,0.5),new THREE.MeshBasicMaterial({color:0xff0000}));
- body.position.y=1;
- e.add(body);
-
- let head=new THREE.Mesh(new THREE.BoxGeometry(0.6,0.6,0.6),new THREE.MeshBasicMaterial({color:0xffcccc}));
- head.position.y=2;
- e.add(head);
-
- e.position.set(Math.random()*40-20,0,Math.random()*40-20);
- e.userData={hp:50,cool:0};
+ let e=new THREE.Mesh(new THREE.BoxGeometry(1,1.5,1),new THREE.MeshBasicMaterial({color:0xff0000}));
+ e.position.set(Math.random()*40-20,0.75,Math.random()*40-20);
+ e.userData={hp:50};
  scene.add(e);
  enemies.push(e);
 }
-for(let i=0;i<6;i++) spawnEnemy();
+for(let i=0;i<5;i++) spawnEnemy();
 
 // ===== 操作 =====
 let keys={};
@@ -75,14 +106,23 @@ window.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
 window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
 
 let yaw=0;
-document.body.addEventListener('mousemove',e=>{
- yaw-=e.movementX*0.002;
- player.rotation.y=yaw;
-});
+document.body.addEventListener('mousemove',e=>{ yaw-=e.movementX*0.002; player.rotation.y=yaw; });
 
 // ===== 弾 =====
 let bullets=[];
-window.addEventListener('mousedown',()=>{
+// 左クリックで建築削除（編集）
+window.addEventListener('contextmenu',e=>e.preventDefault());
+window.addEventListener('mousedown',e=>{
+ if(e.button===2){ // 右クリックで削除
+  builds.forEach((obj,i)=>{
+   if(obj.position.distanceTo(player.position)<3){
+    scene.remove(obj);
+    builds.splice(i,1);
+   }
+  });
+  return;
+ }
+,()=>{
  let b=new THREE.Mesh(new THREE.SphereGeometry(0.1),new THREE.MeshBasicMaterial({color:0xffff00}));
  b.position.copy(gun.getWorldPosition(new THREE.Vector3()));
  let dir=new THREE.Vector3(0,0,-1).applyQuaternion(player.quaternion);
@@ -93,6 +133,11 @@ window.addEventListener('mousedown',()=>{
 // ===== 更新 =====
 let hp=100,kills=0;
 function update(){
+ // プレビュー位置更新
+ if(preview){
+  let dir=new THREE.Vector3(0,0,-3).applyQuaternion(player.quaternion);
+  preview.position.set(player.position.x+dir.x,1,player.position.z+dir.z);
+ }
  if(keys['w']) player.translateZ(-0.15);
  if(keys['s']) player.translateZ(0.15);
  if(keys['a']) player.translateX(-0.15);
@@ -100,9 +145,21 @@ function update(){
 
  bullets.forEach((b,i)=>{
   b.position.add(b.userData.vel);
+
   enemies.forEach(e=>{
-   if(b.position.distanceTo(e.position)<1){ e.userData.hp-=10; scene.remove(b); bullets.splice(i,1); }
+   if(b.position.distanceTo(e.position)<1){ e.userData.hp-=10; removeBullet(i); }
   });
+
+  builds.forEach(obj=>{
+   if(b.position.distanceTo(obj.position)<1){ obj.userData.hp-=10; removeBullet(i); }
+  });
+ });
+
+ function removeBullet(i){ scene.remove(bullets[i]); bullets.splice(i,1); }
+
+ builds=builds.filter(obj=>{
+  if(obj.userData.hp<=0){ scene.remove(obj); return false; }
+  return true;
  });
 
  enemies.forEach(e=>{
@@ -116,7 +173,7 @@ function update(){
  });
 
  document.getElementById('ui').innerText=`HP:${hp} | キル:${kills}`;
- document.getElementById('weaponUI').innerText=`TPSモード`;
+ document.getElementById('weaponUI').innerText=`Q壁 E床 F階段 B建築`;
 }
 
 function animate(){ requestAnimationFrame(animate); update(); updateCamera(); renderer.render(scene,camera);} animate();
