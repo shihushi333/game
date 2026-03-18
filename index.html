@@ -5,11 +5,30 @@
 <title>戦闘ゲーム</title>
 <style>
 body { margin:0; overflow:hidden; }
-#ui { position:absolute; top:10px; left:10px; color:white; font-family:sans-serif; }
+#ui {
+ position:absolute; top:15px; left:15px; color:white;
+ font-family:sans-serif; background:rgba(0,0,0,0.4);
+ padding:10px; border-radius:10px;
+}
+#weaponUI {
+ position:absolute; bottom:20px; right:20px; color:white;
+ background:rgba(0,0,0,0.5); padding:10px; border-radius:10px;
+}
+#crosshair {
+ position:absolute; top:50%; left:50%; width:10px; height:10px;
+ margin-left:-5px; margin-top:-5px; border:2px solid white; border-radius:50%;
+}
+#damage {
+ position:absolute; top:0; left:0; width:100%; height:100%;
+ background:red; opacity:0; pointer-events:none;
+}
 </style>
 </head>
 <body>
 <div id="ui"></div>
+<div id="weaponUI"></div>
+<div id="crosshair"></div>
+<div id="damage"></div>
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 <script>
 let scene=new THREE.Scene();
@@ -18,82 +37,59 @@ let renderer=new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth,window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// 地面
 let ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshBasicMaterial({color:0x228B22}));
-ground.rotation.x=-Math.PI/2;
-scene.add(ground);
+ground.rotation.x=-Math.PI/2; scene.add(ground);
 
-// プレイヤー
-let player=new THREE.Object3D();
-scene.add(player);
-camera.position.set(0,2,5);
+let player=new THREE.Object3D(); scene.add(player);
+// 3人称カメラ（プレイヤーの後ろ）
 player.add(camera);
+camera.position.set(0, 3, 6);
 
-let velocityY=0,onGround=true,hp=100,kills=0;
-let ammo=30,weaponType=1;
+let hp=100,kills=0,ammo=30,maxAmmo=30,reloading=false;
+let velocityY=0,onGround=true;
 
-// ===== 敵 =====
+// ストーム
+let stormRadius=50;
+let storm=new THREE.Mesh(new THREE.RingGeometry(stormRadius-1,stormRadius,32),new THREE.MeshBasicMaterial({color:0x00ffff,side:THREE.DoubleSide}));
+storm.rotation.x=-Math.PI/2; scene.add(storm);
+
+// 敵
 let enemies=[];
 function spawnEnemy(){
- let e=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:0xff0000}));
- e.position.set(Math.random()*40-20,0.5,Math.random()*40-20);
- e.userData={hp:50,cool:0,state:"patrol",target:new THREE.Vector3(Math.random()*40-20,0,Math.random()*40-20)};
- scene.add(e);
- enemies.push(e);
+ let e=new THREE.Mesh(new THREE.BoxGeometry(1,1.5,1),new THREE.MeshBasicMaterial({color:0xff0000}));
+ e.position.set(Math.random()*40-20,0.75,Math.random()*40-20);
+ e.userData={hp:50,cool:0};
+ scene.add(e); enemies.push(e);
 }
-for(let i=0;i<8;i++) spawnEnemy();
+for(let i=0;i<6;i++) spawnEnemy();
 
-// ===== 入力 =====
+// 入力
 let keys={};
 window.addEventListener('keydown',e=>{
  keys[e.key.toLowerCase()]=true;
  if(e.key===' ') jump();
- if(e.key==='1') weaponType=1;
- if(e.key==='2') weaponType=2;
- if(e.key==='q') buildType='wall';
- if(e.key==='e') buildType='floor';
- if(e.key==='r') buildType='ramp';
- if(e.key.toLowerCase()==='b') build();
+ if(e.key.toLowerCase()==='r') reload();
 });
 window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
 
-// 視点
 let yaw=0;
 document.body.addEventListener('mousemove',e=>{
- yaw-=e.movementX*0.002;
- player.rotation.y=yaw;
+ yaw-=e.movementX*0.002; player.rotation.y=yaw;
 });
 
 function jump(){ if(onGround){ velocityY=0.25; onGround=false; }}
+function reload(){ if(reloading)return; reloading=true; setTimeout(()=>{ammo=maxAmmo;reloading=false;},1500);} 
 
-// ===== 建築 =====
-let buildType='wall';
-function build(){
- let obj;
- if(buildType==='wall') obj=new THREE.Mesh(new THREE.BoxGeometry(2,2,0.3),new THREE.MeshBasicMaterial({color:0x888888}));
- if(buildType==='floor') obj=new THREE.Mesh(new THREE.BoxGeometry(2,0.3,2),new THREE.MeshBasicMaterial({color:0x999999}));
- if(buildType==='ramp'){ obj=new THREE.Mesh(new THREE.BoxGeometry(2,0.3,2),new THREE.MeshBasicMaterial({color:0xaaaaaa})); obj.rotation.x=-Math.PI/4; }
- let dir=new THREE.Vector3(0,0,-3).applyQuaternion(player.quaternion);
- obj.position.set(player.position.x+dir.x,1,player.position.z+dir.z);
- scene.add(obj);
-}
-
-// ===== 弾 =====
+// 弾
 let bullets=[],enemyBullets=[];
-let canShoot=true;
 window.addEventListener('mousedown',()=>{
- if(!canShoot||ammo<=0)return;
- canShoot=false; ammo--;
- let spread=weaponType===2?5:1;
- for(let i=0;i<spread;i++){
-  let b=new THREE.Mesh(new THREE.SphereGeometry(0.1),new THREE.MeshBasicMaterial({color:0xffff00}));
-  b.position.copy(camera.getWorldPosition(new THREE.Vector3()));
-  let dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-  dir.x+=(Math.random()-0.5)*0.1; dir.z+=(Math.random()-0.5)*0.1;
-  b.userData.vel=dir.multiplyScalar(0.8);
-  scene.add(b); bullets.push(b);
- }
- setTimeout(()=>canShoot=true,weaponType===1?150:500);
+ if(ammo<=0||reloading)return;
+ ammo--;
+ let b=new THREE.Mesh(new THREE.SphereGeometry(0.1),new THREE.MeshBasicMaterial({color:0xffff00}));
+ b.position.copy(camera.getWorldPosition(new THREE.Vector3()));
+ let dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+ b.userData.vel=dir.multiplyScalar(0.8);
+ scene.add(b); bullets.push(b);
 });
 
 function enemyShoot(e){
@@ -105,18 +101,21 @@ function enemyShoot(e){
 }
 
 function update(){
- let speed=0.12;
- if(keys['w']) player.translateZ(-speed);
- if(keys['s']) player.translateZ(speed);
- if(keys['a']) player.translateX(-speed);
- if(keys['d']) player.translateX(speed);
+ if(keys['w']) player.translateZ(-0.12);
+ if(keys['s']) player.translateZ(0.12);
+ if(keys['a']) player.translateX(-0.12);
+ if(keys['d']) player.translateX(0.12);
 
- // 重力
- velocityY-=0.01;
- player.position.y+=velocityY;
+ velocityY-=0.01; player.position.y+=velocityY;
  if(player.position.y<=0){ player.position.y=0; velocityY=0; onGround=true; }
 
- // 弾
+ // ストーム縮小
+ stormRadius-=0.005;
+ storm.geometry.dispose();
+ storm.geometry=new THREE.RingGeometry(stormRadius-1,stormRadius,32);
+
+ if(player.position.length()>stormRadius){ hp-=0.1; }
+
  bullets.forEach((b,i)=>{
   b.position.add(b.userData.vel);
   enemies.forEach(e=>{
@@ -124,40 +123,16 @@ function update(){
   });
  });
 
- // ===== AI強化 =====
  enemies.forEach(e=>{
-  let dist=e.position.distanceTo(player.position);
-
-  // 状態
-  if(dist<12) e.userData.state="attack";
-  else e.userData.state="patrol";
-
-  // パトロール
-  if(e.userData.state==="patrol"){
-   let dir=e.userData.target.clone().sub(e.position);
-   if(dir.length()<1) e.userData.target.set(Math.random()*40-20,0,Math.random()*40-20);
-   else e.position.add(dir.normalize().multiplyScalar(0.02));
-  }
-
-  // 攻撃
-  if(e.userData.state==="attack"){
-   let dir=player.position.clone().sub(e.position).normalize();
-
-   // ストレイフ（横移動）
-   let strafe=new THREE.Vector3(-dir.z,0,dir.x).multiplyScalar(Math.sin(Date.now()*0.005)*0.03);
-
-   e.position.add(dir.multiplyScalar(0.04)).add(strafe);
-
-   // 射撃
-   e.userData.cool--;
-   if(e.userData.cool<=0){ enemyShoot(e); e.userData.cool=40; }
-  }
+  let dir=player.position.clone().sub(e.position).normalize();
+  e.position.add(dir.multiplyScalar(0.03));
+  e.userData.cool--;
+  if(e.userData.cool<=0){ enemyShoot(e); e.userData.cool=60; }
  });
 
- // 敵弾
  enemyBullets.forEach((b,i)=>{
   b.position.add(b.userData.vel);
-  if(b.position.distanceTo(player.position)<1){ hp-=5; scene.remove(b); enemyBullets.splice(i,1); }
+  if(b.position.distanceTo(player.position)<1){ hp-=5; document.getElementById('damage').style.opacity=0.5; setTimeout(()=>{document.getElementById('damage').style.opacity=0;},100); scene.remove(b); enemyBullets.splice(i,1); }
  });
 
  enemies=enemies.filter(e=>{
@@ -165,11 +140,25 @@ function update(){
   return true;
  });
 
- document.getElementById('ui').innerText=
-  `HP:${Math.floor(hp)} | キル:${kills} | 弾:${ammo}`;
+ document.getElementById('ui').innerText=`HP:${Math.floor(hp)} | キル:${kills}`;
+ document.getElementById('weaponUI').innerText=`弾:${ammo}${reloading?" (リロード中)":""}`;
 }
 
-function animate(){ requestAnimationFrame(animate); update(); renderer.render(scene,camera);} animate();
+function updateCamera(){
+ // プレイヤーの後ろにカメラを固定（TPS）
+ let offset=new THREE.Vector3(0,3,6);
+ offset.applyQuaternion(player.quaternion);
+ camera.position.copy(player.position).add(offset);
+ camera.lookAt(player.position.x, player.position.y+1.5, player.position.z);
+}
+
+function animate(){
+ requestAnimationFrame(animate);
+ update();
+ updateCamera();
+ renderer.render(scene,camera);
+}
+animate();
 </script>
 </body>
 </html>
